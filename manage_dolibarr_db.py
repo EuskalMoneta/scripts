@@ -182,7 +182,7 @@ class dolibarr_DB_manager:
         
         if res is None:
             print(f'Warning: URL "{url}" not valid for "{presta}" setting it to "no_url"')
-            return 'no_url'
+            return ''
 
         if 'http://' in url or 'https://' in url:
             return url
