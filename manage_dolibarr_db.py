@@ -35,12 +35,11 @@ class UDM_Error(Exception):
 
 class dolibarr_DB_manager:
     def __init__(self):
-        password = os.environ['DOLIBARR_DB_PASS']
         self.mydb = mysql.connector.connect(
-          host="localhost",
-          user="root",
-          password=password,
-          database="dolibarr"
+          host=os.environ['DOLIBARR_DB_HOST'],
+          user=os.environ['DOLIBARR_DB_USER'],
+          password=os.environ['DOLIBARR_DB_PASS'],
+          database=os.environ['DOLIBARR_DB_DATABASE'],
         )
         
         self.mycursor = self.mydb.cursor()
