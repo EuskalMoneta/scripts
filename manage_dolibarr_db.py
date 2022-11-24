@@ -220,16 +220,55 @@ class dolibarr_DB_manager:
                     except UDM_Error as e:
                         print(e.message)
 
-    def gen_json_gogo(self, basename):    
-        presta_with_gps_sql = "select nom,address,town,latitude,longitude,description_francais,url from llx_societe_extrafields \
-                                         join llx_societe on llx_societe_extrafields.fk_object = llx_societe.rowid \
-                                         where latitude is not NULL and client=1 and status=1;"
-    
-        category_sql = "select label from llx_societe \
-                           join llx_categorie_societe on llx_categorie_societe.fk_soc=llx_societe.rowid \
-                           join llx_categorie on llx_categorie.rowid=fk_categorie \
-                           where nom=%s;"
-
+    def gen_json_gogo(self, basename):
+        presta_with_gps_sql ="""SELECT
+	sp.lastname AS nom,
+	TRIM(TRIM('\n' FROM SUBSTRING_INDEX(REPLACE(sp.address, '\r\n', '\n'), '/', -1))) AS address,
+	TRIM(SUBSTRING_INDEX(sp.town, '/', -1)) AS town,
+	IFNULL(spe.latitude, '') AS latitude,
+	IFNULL(spe.longitude, '') AS longitude,
+	IFNULL(REPLACE(spe.description_francais, '\r\n', '\n'), '') AS description_francais,
+	IFNULL(s.url, '') AS url,
+	sp.rowid AS contact_id,
+	IFNULL(spe.facebook, '') AS facebook,
+	IFNULL(spe.instagram, '') AS instagram,
+	IFNULL(spe.horaires_francais, '') AS horaires_francais,
+	IFNULL(spe.autres_lieux_activite_francais, '') AS autres_lieux_activite_francais,
+	IFNULL(sp.phone, '') AS horaires_francais,
+	IFNULL(spe.euskopay, '') AS euskopay,
+	SUBSTRING_INDEX(spe.equipement_pour_euskokart,'_',1),
+	IFNULL(spe.euskara, '') AS euskara,
+	IFNULL(s.email, '') AS email,
+	s.rowid AS societe_id
+FROM llx_societe s
+JOIN llx_socpeople sp ON s.rowid = sp.fk_soc
+JOIN llx_socpeople_extrafields spe ON sp.rowid = spe.fk_object
+JOIN llx_categorie_contact cc ON sp.rowid = cc.fk_socpeople
+	AND cc.fk_categorie = 370 -- Adresse d'activité
+WHERE s.code_client IS NOT NULL AND s.client = 1 AND s.status = 1
+ORDER BY nom
+;
+"""
+        category_sql = """SELECT TRIM(SUBSTRING_INDEX(label, '/', -1)) FROM llx_socpeople
+JOIN llx_categorie_contact ON llx_categorie_contact.fk_socpeople = llx_socpeople.rowid
+JOIN llx_categorie ON llx_categorie.rowid = llx_categorie_contact.fk_categorie
+	AND llx_categorie.fk_parent = 444 -- sous-catégorie de "Annuaire général"
+WHERE lastname=%s
+;
+ """
+        partenaires_sql ="""
+	SELECT
+		TRIM(SUBSTRING_INDEX(cat.label, '/', -1)) AS partenaires
+	FROM `llx_societe` s
+	LEFT JOIN (`llx_categorie_societe` catsoc
+		JOIN `llx_categorie` cat ON catsoc.fk_categorie = cat.rowid
+			AND cat.fk_parent = 437 -- sous-catégorie de "--- Partenaires"
+			AND cat.label != 'Association des Producteurs Fermiers du Pays Basque (APFPB)'
+			AND cat.label != 'Union Commerciale et Artisanale de Bayonne'
+	) ON s.rowid = catsoc.fk_soc
+	WHERE s.rowid=%s
+	; 
+	"""
         self.mycursor.execute(presta_with_gps_sql)
         presta = self.mycursor.fetchall()
         all_presta = []
@@ -237,25 +276,38 @@ class dolibarr_DB_manager:
 
             self.mycursor.execute(category_sql, (p[0],))
             category = self.mycursor.fetchall()
+            self.mycursor.execute(partenaires_sql, (p[17],))
+            partenaires = self.mycursor.fetchall()
             if category == []:
                 print(f'Warning: no category for presta "{p[0]}"')
             try:
                 if self.valid_gps(p):
                     to_add = {}
-                    to_add['id'] = p[0]
-                    to_add['address'] = p[1] 
-                    to_add['town'] = p[2] 
+                    to_add['nom'] = p[0]
+                    to_add['address'] = p[1]
+                    to_add['town'] = p[2]
                     to_add['latitude'] = p[3]
                     to_add['longitude'] = p[4]
                     to_add['description'] = p[5]
-                    to_add['url'] = self.improve_url(p[6], p[0])
-                    to_add['category'] = [cat[0] for cat in category]
+                    to_add['website'] = self.improve_url(p[6], p[0])
+                    to_add['id'] = p[7]
+                    to_add['facebook'] = p[8]
+                    to_add['instagram'] = p[9]
+                    to_add['horaires'] = p[10]
+                    to_add['autres_lieux_activite'] = p[11]
+                    to_add['phone'] = p[12]
+                    to_add['euskopay'] = p[13]
+                    to_add['equipement_pour_euskokart'] = p[14]
+                    to_add['euskara'] = p[15]
+                    to_add['email'] = p[16]
+                    to_add['categories'] = [cat[0] for cat in category]
+                    to_add['partenaires'] = [p[0] for p in partenaires]
                     all_presta.append(to_add)
             except UDM_Error as e:
                 print(e.message)
         json_dict = {}
         json_dict['license'] = 'To be determined'
-        json_dict['source'] = 'De Main en Main Dolibarr database'
+        json_dict['source'] = 'Eusko Dolibarr database'
         json_dict['network'] = all_presta
 
         with open(basename + '.json', 'w') as json_file:
