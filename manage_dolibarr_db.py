@@ -220,21 +220,23 @@ class dolibarr_DB_manager:
                     except UDM_Error as e:
                         print(e.message)
 
-    def gen_json_gogo(self, basename):
-        presta_with_gps_sql ="""SELECT
+    def gen_json_gogo(self, basename, language):
+        index_substr = -1 if language == 'fr' else 1
+        suffixe = "francais" if language == 'fr' else "euskara"
+	presta_with_gps_sql = """SELECT
 	sp.lastname AS nom,
-	TRIM(TRIM('\n' FROM SUBSTRING_INDEX(REPLACE(sp.address, '\r\n', '\n'), '/', -1))) AS address,
-	TRIM(SUBSTRING_INDEX(sp.town, '/', -1)) AS town,
+	TRIM(TRIM('\n' FROM SUBSTRING_INDEX(REPLACE(sp.address, '\r\n', '\n'), '/',  {index_substr}))) AS address,
+	TRIM(SUBSTRING_INDEX(sp.town, '/',  {index_substr})) AS town,
 	IFNULL(spe.latitude, '') AS latitude,
 	IFNULL(spe.longitude, '') AS longitude,
-	IFNULL(REPLACE(spe.description_francais, '\r\n', '\n'), '') AS description_francais,
+	IFNULL(REPLACE(spe.description_{suffixe}, '\r\n', '\n'), '') AS description,
 	IFNULL(s.url, '') AS url,
 	sp.rowid AS contact_id,
 	IFNULL(spe.facebook, '') AS facebook,
 	IFNULL(spe.instagram, '') AS instagram,
-	IFNULL(spe.horaires_francais, '') AS horaires_francais,
-	IFNULL(spe.autres_lieux_activite_francais, '') AS autres_lieux_activite_francais,
-	IFNULL(sp.phone, '') AS horaires_francais,
+	IFNULL(spe.horaires_{suffixe}, '') AS horaires,
+	IFNULL(spe.autres_lieux_activite_{suffixe}, '') AS autres_lieux_activite,
+	IFNULL(sp.phone, '') AS phone,
 	IFNULL(spe.euskopay, '') AS euskopay,
 	SUBSTRING_INDEX(spe.equipement_pour_euskokart,'_',1),
 	IFNULL(spe.euskara, '') AS euskara,
@@ -248,14 +250,16 @@ JOIN llx_categorie_contact cc ON sp.rowid = cc.fk_socpeople
 WHERE s.code_client IS NOT NULL AND s.client = 1 AND s.status = 1
 ORDER BY nom
 ;
-"""
-        category_sql = """SELECT TRIM(SUBSTRING_INDEX(label, '/', -1)) FROM llx_socpeople
-JOIN llx_categorie_contact ON llx_categorie_contact.fk_socpeople = llx_socpeople.rowid
+""".format(index_substr=index_substr, suffixe=suffixe)
+
+	category_sql = """SELECT TRIM(SUBSTRING_INDEX(label, '/', {index_substr})) FROM llx_socpeople 
+JOIN llx_categorie_contact ON llx_categorie_contact.fk_socpeople = llx_socpeople.rowid 
 JOIN llx_categorie ON llx_categorie.rowid = llx_categorie_contact.fk_categorie
 	AND llx_categorie.fk_parent = 444 -- sous-catégorie de "Annuaire général"
 WHERE lastname=%s
 ;
- """
+""".format(index_substr=index_substr)
+
         partenaires_sql ="""
 	SELECT
 		TRIM(SUBSTRING_INDEX(cat.label, '/', -1)) AS partenaires
@@ -269,6 +273,7 @@ WHERE lastname=%s
 	WHERE s.rowid=%s
 	; 
 	"""
+
         self.mycursor.execute(presta_with_gps_sql)
         presta = self.mycursor.fetchall()
         all_presta = []
@@ -461,7 +466,7 @@ def export(args):
     if args.format == 'csv':
         ddbm.gen_csv_osm(args.output)
     elif args.format == 'json':
-        ddbm.gen_json_gogo(args.output)
+        ddbm.gen_json_gogo(args.output, args.language)
     elif args.format == 'tex':
         ddbm.gen_tex_gogo(args.output)
 
@@ -489,6 +494,7 @@ def build_parser():
     parser_export = subparsers.add_parser('export', help='Export data from the Dolibarr DB')
     parser_export.add_argument('-f', '--format', type=str, default="json", choices=['json', 'csv', 'tex'], help='Format of the file generated (default json)')
     parser_export.add_argument('-o', '--output', type=str, default="Prestataires_gps", help='Filename for the data exported (default Prestataires_gps)')
+    parser_export.add_argument('-l', '--language', type=str, default="fr", choices=['fr', 'eus'],help='language for the data exported (default )')
     parser_export.set_defaults(func=export)
 
     # create the parser for the "update" command
